@@ -12,7 +12,7 @@ function buildWithEnv() {
         
         // Substitui as variáveis de ambiente
         const replacements = {
-            '{{WEBHOOK_URL}}': process.env.WEBHOOK_URL || 'https://n8n.remotedok.fun/form/REPLACE_WITH_YOUR_WEBHOOK_ID'
+            '{{WEBHOOK_URL}}': process.env.WEBHOOK_URL || 'https://seu-dominio.com/form/seu-webhook-id'
         };
         
         // Aplica as substituições

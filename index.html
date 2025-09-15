@@ -605,7 +605,7 @@
         class ImageUploader {
             constructor() {
                 this.selectedImages = [];
-                this.webhookUrl = window.WEBHOOK_URL || 'https://n8n.remotedok.fun/form/REPLACE_WITH_YOUR_WEBHOOK_ID';
+                this.webhookUrl = window.WEBHOOK_URL || 'https://seu-dominio.com/form/seu-webhook-id';
                 this.maxFileSize = 10 * 1024 * 1024; // 10MB
                 this.allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
                 
@@ -814,12 +814,22 @@
 
             async uploadSingleImage(file, propertyName, sequenceNumber) {
                 const formData = new FormData();
-                formData.append('image', file);
-                formData.append('propertyName', propertyName);
+                
+                // Campos que o webhook n8n espera (baseado na sua configuração)
+                formData.append('Fotos', file); // Nome do campo no webhook
+                formData.append('Nome da Propriedade (Apelido)', propertyName); // Nome do campo no webhook
+                
+                // Campos adicionais para controle (opcional)
                 formData.append('sequenceNumber', sequenceNumber);
                 formData.append('fileName', file.name);
                 formData.append('fileSize', file.size);
                 formData.append('fileType', file.type);
+
+                console.log('Enviando dados:', {
+                    'Fotos': file.name,
+                    'Nome da Propriedade (Apelido)': propertyName,
+                    'sequenceNumber': sequenceNumber
+                });
 
                 const response = await fetch(this.webhookUrl, {
                     method: 'POST',
