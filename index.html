@@ -808,42 +808,75 @@
             }
 
             async uploadAllImages(propertyName) {
+                console.log('=== INICIANDO UPLOAD ===');
+                console.log('Webhook URL:', this.webhookUrl);
+                console.log('Propriedade:', propertyName);
+                console.log('Imagens selecionadas:', this.selectedImages.length);
+                
                 const formData = new FormData();
                 
+                // Para formulários HTML, os campos devem ter os nomes exatos
                 // Adiciona todas as imagens ao campo "Fotos" (múltiplos arquivos)
                 this.selectedImages.forEach((file, index) => {
                     formData.append('Fotos', file);
-                    console.log(`Adicionando imagem ${index + 1}: ${file.name}`);
+                    console.log(`Adicionando imagem ${index + 1}: ${file.name} (${file.size} bytes)`);
                 });
                 
-                // Adiciona o nome da propriedade
+                // Adiciona o nome da propriedade (nome exato do campo no formulário)
                 formData.append('Nome da Propriedade (Apelido)', propertyName);
                 
                 // Campos adicionais para controle
                 formData.append('totalImages', this.selectedImages.length);
                 formData.append('uploadTimestamp', new Date().toISOString());
 
-                console.log('Enviando dados para webhook:', {
-                    'Fotos': `${this.selectedImages.length} arquivos`,
-                    'Nome da Propriedade (Apelido)': propertyName,
-                    'totalImages': this.selectedImages.length
-                });
-
-                const response = await fetch(this.webhookUrl, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Erro do servidor:', errorText);
-                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+                console.log('Dados do FormData:');
+                for (let [key, value] of formData.entries()) {
+                    if (value instanceof File) {
+                        console.log(`${key}: ${value.name} (${value.size} bytes)`);
+                    } else {
+                        console.log(`${key}: ${value}`);
+                    }
                 }
 
-                const responseData = await response.text();
-                console.log('Resposta do webhook:', responseData);
-                
-                return response;
+                try {
+                    console.log('Enviando requisição para formulário HTML:', this.webhookUrl);
+                    
+                    // Para formulários HTML, usar enctype="multipart/form-data" é importante
+                    const response = await fetch(this.webhookUrl, {
+                        method: 'POST',
+                        body: formData,
+                        // Não definir Content-Type - deixar o browser definir automaticamente
+                        // para incluir o boundary correto para multipart/form-data
+                    });
+
+                    console.log('Status da resposta:', response.status);
+                    console.log('Headers da resposta:', [...response.headers.entries()]);
+
+                    // Para formulários HTML, mesmo status 200 pode ser sucesso
+                    if (response.status >= 200 && response.status < 300) {
+                        const responseData = await response.text();
+                        console.log('Resposta do formulário:', responseData);
+                        console.log('=== UPLOAD CONCLUÍDO COM SUCESSO ===');
+                        return response;
+                    } else {
+                        const errorText = await response.text();
+                        console.error('Erro do servidor:', errorText);
+                        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+                    }
+                    
+                } catch (error) {
+                    console.error('=== ERRO NO UPLOAD ===');
+                    console.error('Erro completo:', error);
+                    console.error('Tipo do erro:', error.name);
+                    console.error('Mensagem:', error.message);
+                    
+                    // Se for erro de rede, pode ser CORS ou URL incorreta
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        throw new Error('Erro de conexão. Verifique se a URL do webhook está correta e se permite requisições do seu domínio.');
+                    }
+                    
+                    throw error;
+                }
             }
 
             updateProgress(percentage, text) {
@@ -897,6 +930,7 @@
         // Initialize the uploader when the page loads
         document.addEventListener('DOMContentLoaded', () => {
             console.log('DOM loaded, initializing uploader');
+            console.log('Webhook URL configurada:', window.WEBHOOK_URL);
             const uploader = new ImageUploader();
             
             // Add keyboard shortcuts
