@@ -793,42 +793,40 @@
 
             async uploadImages(propertyName) {
                 const totalImages = this.selectedImages.length;
-                let uploadedCount = 0;
-
-                for (let i = 0; i < this.selectedImages.length; i++) {
-                    const file = this.selectedImages[i];
+                
+                try {
+                    // Envia todas as imagens de uma vez (como o webhook espera)
+                    await this.uploadAllImages(propertyName);
                     
-                    try {
-                        await this.uploadSingleImage(file, propertyName, i + 1);
-                        uploadedCount++;
-                        
-                        const progress = (uploadedCount / totalImages) * 100;
-                        this.updateProgress(progress, `Enviando imagem ${uploadedCount} de ${totalImages}`);
-                        
-                    } catch (error) {
-                        console.error(`Error uploading image ${i + 1}:`, error);
-                        throw new Error(`Falha ao enviar a imagem ${file.name}`);
-                    }
+                    // Atualiza progresso para 100%
+                    this.updateProgress(100, `Todas as ${totalImages} imagens enviadas com sucesso!`);
+                    
+                } catch (error) {
+                    console.error('Error uploading images:', error);
+                    throw new Error(`Falha ao enviar as imagens: ${error.message}`);
                 }
             }
 
-            async uploadSingleImage(file, propertyName, sequenceNumber) {
+            async uploadAllImages(propertyName) {
                 const formData = new FormData();
                 
-                // Campos que o webhook n8n espera (baseado na sua configuração)
-                formData.append('Fotos', file); // Nome do campo no webhook
-                formData.append('Nome da Propriedade (Apelido)', propertyName); // Nome do campo no webhook
+                // Adiciona todas as imagens ao campo "Fotos" (múltiplos arquivos)
+                this.selectedImages.forEach((file, index) => {
+                    formData.append('Fotos', file);
+                    console.log(`Adicionando imagem ${index + 1}: ${file.name}`);
+                });
                 
-                // Campos adicionais para controle (opcional)
-                formData.append('sequenceNumber', sequenceNumber);
-                formData.append('fileName', file.name);
-                formData.append('fileSize', file.size);
-                formData.append('fileType', file.type);
+                // Adiciona o nome da propriedade
+                formData.append('Nome da Propriedade (Apelido)', propertyName);
+                
+                // Campos adicionais para controle
+                formData.append('totalImages', this.selectedImages.length);
+                formData.append('uploadTimestamp', new Date().toISOString());
 
-                console.log('Enviando dados:', {
-                    'Fotos': file.name,
+                console.log('Enviando dados para webhook:', {
+                    'Fotos': `${this.selectedImages.length} arquivos`,
                     'Nome da Propriedade (Apelido)': propertyName,
-                    'sequenceNumber': sequenceNumber
+                    'totalImages': this.selectedImages.length
                 });
 
                 const response = await fetch(this.webhookUrl, {
@@ -837,9 +835,14 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error('Erro do servidor:', errorText);
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
                 }
 
+                const responseData = await response.text();
+                console.log('Resposta do webhook:', responseData);
+                
                 return response;
             }
 
