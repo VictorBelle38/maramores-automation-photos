@@ -107,15 +107,60 @@ Para personalizar a interface, edite os seguintes arquivos:
 - As imagens são validadas antes do envio
 - A interface mostra feedback visual durante todo o processo
 
+## 🔐 Configuração de Variáveis de Ambiente
+
+### **Proteção do Webhook URL**
+
+Para manter seu webhook URL seguro e não expor no GitHub:
+
+1. **Copie o arquivo de exemplo**:
+   ```bash
+   cp env.example .env
+   ```
+
+2. **Edite o arquivo `.env`** com seu webhook real:
+   ```env
+   WEBHOOK_URL=https://n8n.remotedok.fun/form/SEU_WEBHOOK_ID_REAL
+   ```
+
+3. **O arquivo `.env` está no `.gitignore`** - não será commitado no GitHub
+
 ## 🚀 Deploy na Vercel
 
-O projeto está configurado para deploy automático na Vercel com:
+### **Opção 1 - Deploy Local com Build**
 
-- **vercel.json**: Configuração de rotas e headers de segurança
-- **package.json**: Scripts de deploy e dependências
-- **.gitignore**: Arquivos ignorados pelo Git
+```bash
+# Instalar dependências
+npm install
 
-### Comandos para Deploy:
+# Configurar variáveis de ambiente
+cp env.example .env
+# Edite o .env com seu webhook real
+
+# Build com variáveis de ambiente
+npm run build
+
+# Deploy
+vercel --prod
+```
+
+### **Opção 2 - Deploy via GitHub + Vercel**
+
+1. **Configure as variáveis de ambiente na Vercel**:
+   - Acesse seu projeto na Vercel
+   - Vá em Settings → Environment Variables
+   - Adicione: `WEBHOOK_URL` = `https://n8n.remotedok.fun/form/SEU_WEBHOOK_ID_REAL`
+
+2. **Faça push para GitHub**:
+   ```bash
+   git add .
+   git commit -m "Add environment variables support"
+   git push origin main
+   ```
+
+3. **Deploy automático** - A Vercel vai usar as variáveis de ambiente configuradas
+
+### **Opção 3 - Deploy Direto**
 
 ```bash
 # Instalar Vercel CLI
@@ -124,12 +169,6 @@ npm i -g vercel
 # Login na Vercel
 vercel login
 
-# Deploy em produção
+# Deploy (vai usar as variáveis do .env local)
 vercel --prod
 ```
-
-### Alternativa - Deploy via GitHub:
-
-1. Faça push do código para um repositório GitHub
-2. Conecte o repositório na Vercel
-3. Deploy automático a cada push

@@ -599,10 +599,13 @@
     </div>
 
     <script>
+        // Configurações de ambiente (serão substituídas durante o build)
+        window.WEBHOOK_URL = '{{WEBHOOK_URL}}';
+        
         class ImageUploader {
             constructor() {
                 this.selectedImages = [];
-                this.webhookUrl = 'https://n8n.remotedok.fun/form/REPLACE_WITH_YOUR_WEBHOOK_ID';
+                this.webhookUrl = window.WEBHOOK_URL || 'https://n8n.remotedok.fun/form/REPLACE_WITH_YOUR_WEBHOOK_ID';
                 this.maxFileSize = 10 * 1024 * 1024; // 10MB
                 this.allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
                 

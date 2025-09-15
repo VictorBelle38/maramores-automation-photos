@@ -5,8 +5,10 @@
   "main": "index.html",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo 'Static site - no build needed'",
-    "deploy": "vercel --prod"
+    "build": "node build.js",
+    "build:env": "node build.js",
+    "deploy": "npm run build && vercel --prod",
+    "start": "vercel dev"
   },
   "keywords": [
     "upload",
@@ -18,6 +20,9 @@
   ],
   "author": "Victor Bellé",
   "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.0"
+  },
   "devDependencies": {
     "vercel": "^32.0.0"
   },
