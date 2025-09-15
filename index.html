@@ -808,22 +808,21 @@
             }
 
             async uploadAllImages(propertyName) {
-                console.log('=== INICIANDO UPLOAD ===');
+                console.log('=== INICIANDO UPLOAD PARA WEBHOOK ===');
                 console.log('Webhook URL:', this.webhookUrl);
                 console.log('Propriedade:', propertyName);
                 console.log('Imagens selecionadas:', this.selectedImages.length);
                 
                 const formData = new FormData();
                 
-                // Para formulários HTML, os campos devem ter os nomes exatos
-                // Adiciona todas as imagens ao campo "Fotos" (múltiplos arquivos)
+                // Adiciona todas as imagens com o nome "files" (como configurado no webhook)
                 this.selectedImages.forEach((file, index) => {
-                    formData.append('Fotos', file);
+                    formData.append('files', file);
                     console.log(`Adicionando imagem ${index + 1}: ${file.name} (${file.size} bytes)`);
                 });
                 
-                // Adiciona o nome da propriedade (nome exato do campo no formulário)
-                formData.append('Nome da Propriedade (Apelido)', propertyName);
+                // Adiciona o nome da propriedade
+                formData.append('propertyName', propertyName);
                 
                 // Campos adicionais para controle
                 formData.append('totalImages', this.selectedImages.length);
@@ -839,12 +838,11 @@
                 }
 
                 try {
-                    console.log('Enviando requisição para formulário HTML:', this.webhookUrl);
+                    console.log('Enviando requisição para webhook n8n:', this.webhookUrl);
                     
-                    // Para formulários HTML, usar enctype="multipart/form-data" é importante
                     const response = await fetch(this.webhookUrl, {
                         method: 'POST',
-                        body: formData,
+                        body: formData
                         // Não definir Content-Type - deixar o browser definir automaticamente
                         // para incluir o boundary correto para multipart/form-data
                     });
@@ -852,10 +850,9 @@
                     console.log('Status da resposta:', response.status);
                     console.log('Headers da resposta:', [...response.headers.entries()]);
 
-                    // Para formulários HTML, mesmo status 200 pode ser sucesso
-                    if (response.status >= 200 && response.status < 300) {
+                    if (response.ok) {
                         const responseData = await response.text();
-                        console.log('Resposta do formulário:', responseData);
+                        console.log('Resposta do webhook:', responseData);
                         console.log('=== UPLOAD CONCLUÍDO COM SUCESSO ===');
                         return response;
                     } else {
@@ -878,6 +875,7 @@
                     throw error;
                 }
             }
+
 
             updateProgress(percentage, text) {
                 this.progressFill.style.width = `${percentage}%`;
