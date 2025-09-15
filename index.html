@@ -606,7 +606,7 @@
         class ImageUploader {
             constructor() {
                 this.selectedImages = [];
-                this.webhookUrl = window.WEBHOOK_URL || 'https://seu-dominio.com/form/seu-webhook-id';
+                this.webhookUrl = window.WEBHOOK_URL || 'https://n8n.remotedok.fun/webhook/envio-fotos';
                 this.maxFileSize = 10 * 1024 * 1024; // 10MB
                 this.allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
                 
@@ -938,6 +938,7 @@
             console.log('DOM loaded, initializing uploader');
             console.log('Webhook URL configurada:', window.WEBHOOK_URL);
             console.log('URL completa esperada:', 'https://n8n.remotedok.fun/webhook/envio-fotos');
+            console.log('URL atual configurada:', window.WEBHOOK_URL);
             const uploader = new ImageUploader();
             
             // Add keyboard shortcuts
