@@ -598,10 +598,9 @@
         </div>
     </div>
 
-    <script src="config.js"></script>
     <script>
         // Configurações de ambiente (serão substituídas durante o build)
-        // window.WEBHOOK_URL = '{{WEBHOOK_URL}}';
+        window.WEBHOOK_URL = '{{WEBHOOK_URL}}';
         
         class ImageUploader {
             constructor() {
@@ -809,26 +808,26 @@
             }
 
             async uploadAllImages(propertyName) {
-                console.log('=== INICIANDO UPLOAD PARA WEBHOOK ===');
-                console.log('Webhook URL:', this.webhookUrl);
+                console.log('=== INICIANDO UPLOAD PARA FORMULÁRIO ===');
+                console.log('Formulário URL:', this.webhookUrl);
                 console.log('Propriedade:', propertyName);
                 console.log('Imagens selecionadas:', this.selectedImages.length);
                 
                 // Verifica se a URL está correta
                 if (!this.webhookUrl || this.webhookUrl.includes('{{WEBHOOK_URL}}') || this.webhookUrl.includes('seu-dominio.com')) {
-                    throw new Error('URL do webhook não configurada corretamente. Verifique o arquivo .env');
+                    throw new Error('URL do formulário não configurada corretamente. Verifique as variáveis de ambiente na Vercel.');
                 }
                 
                 const formData = new FormData();
                 
-                // Adiciona todas as imagens com o nome "files" (como configurado no webhook)
+                // Adiciona todas as imagens com o nome "Fotos" (como configurado no formulário)
                 this.selectedImages.forEach((file, index) => {
-                    formData.append('files', file);
+                    formData.append('Fotos', file);
                     console.log(`Adicionando imagem ${index + 1}: ${file.name} (${file.size} bytes)`);
                 });
                 
-                // Adiciona o nome da propriedade
-                formData.append('propertyName', propertyName);
+                // Adiciona o nome da propriedade (nome exato do campo no formulário)
+                formData.append('Nome da Propriedade (Apelido)', propertyName);
                 
                 // Campos adicionais para controle
                 formData.append('totalImages', this.selectedImages.length);
@@ -844,15 +843,13 @@
                 }
 
                 try {
-                    console.log('Enviando requisição para webhook n8n:', this.webhookUrl);
+                    console.log('Enviando requisição para formulário n8n:', this.webhookUrl);
                     
                     const response = await fetch(this.webhookUrl, {
                         method: 'POST',
-                        body: formData,
-                        // Headers para garantir compatibilidade
-                        headers: {
-                            'Accept': '*/*'
-                        }
+                        body: formData
+                        // Não definir Content-Type - deixar o browser definir automaticamente
+                        // para incluir o boundary correto para multipart/form-data
                     });
 
                     console.log('Status da resposta:', response.status);
@@ -860,7 +857,7 @@
 
                     if (response.ok) {
                         const responseData = await response.text();
-                        console.log('Resposta do webhook:', responseData);
+                        console.log('Resposta do formulário:', responseData);
                         console.log('=== UPLOAD CONCLUÍDO COM SUCESSO ===');
                         return response;
                     } else {
@@ -877,7 +874,7 @@
                     
                     // Se for erro de rede, pode ser CORS ou URL incorreta
                     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                        throw new Error('Erro de conexão. Verifique se a URL do webhook está correta e se permite requisições do seu domínio.');
+                        throw new Error('Erro de conexão. Verifique se a URL do formulário está correta e se permite requisições do seu domínio.');
                     }
                     
                     throw error;
