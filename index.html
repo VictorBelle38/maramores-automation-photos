@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload de Imagens - Maramores</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="form-container">
+            <h1 class="title">Upload de Imagens</h1>
+            
+            <form id="uploadForm" class="upload-form">
+                <div class="input-group">
+                    <label for="propertyName">Nome da Propriedade</label>
+                    <input type="text" id="propertyName" name="propertyName" placeholder="Digite o nome da propriedade" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="imageUpload">Selecionar Imagens</label>
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <p class="upload-text">Clique aqui ou arraste as imagens</p>
+                        <p class="upload-subtext">PNG, JPG, JPEG até 10MB cada</p>
+                        <input type="file" id="imageUpload" name="images" multiple accept="image/*" hidden>
+                    </div>
+                </div>
+
+                <div class="image-preview-container" id="imagePreviewContainer">
+                    <h3>Imagens Selecionadas</h3>
+                    <div class="image-grid" id="imageGrid"></div>
+                </div>
+
+                <div class="progress-container" id="progressContainer" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">Enviando imagens...</p>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <i class="fas fa-paper-plane"></i>
+                    ENVIAR IMAGENS
+                </button>
+            </form>
+
+            <div class="success-message" id="successMessage" style="display: none;">
+                <i class="fas fa-check-circle"></i>
+                <p>Imagens enviadas com sucesso!</p>
+            </div>
+
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p id="errorText">Erro ao enviar imagens. Tente novamente.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

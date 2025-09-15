@@ -1,0 +1,27 @@
+{
+  "name": "maramores-automation-photos",
+  "version": "1.0.0",
+  "description": "Interface moderna para upload de imagens com integração n8n",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Static site - no build needed'",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "upload",
+    "images",
+    "n8n",
+    "webhook",
+    "automation",
+    "photos"
+  ],
+  "author": "Victor Bellé",
+  "license": "MIT",
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
