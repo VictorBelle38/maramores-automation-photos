@@ -598,9 +598,10 @@
         </div>
     </div>
 
+    <script src="config.js"></script>
     <script>
         // Configurações de ambiente (serão substituídas durante o build)
-        window.WEBHOOK_URL = '{{WEBHOOK_URL}}';
+        // window.WEBHOOK_URL = '{{WEBHOOK_URL}}';
         
         class ImageUploader {
             constructor() {
@@ -813,6 +814,11 @@
                 console.log('Propriedade:', propertyName);
                 console.log('Imagens selecionadas:', this.selectedImages.length);
                 
+                // Verifica se a URL está correta
+                if (!this.webhookUrl || this.webhookUrl.includes('{{WEBHOOK_URL}}') || this.webhookUrl.includes('seu-dominio.com')) {
+                    throw new Error('URL do webhook não configurada corretamente. Verifique o arquivo .env');
+                }
+                
                 const formData = new FormData();
                 
                 // Adiciona todas as imagens com o nome "files" (como configurado no webhook)
@@ -842,9 +848,11 @@
                     
                     const response = await fetch(this.webhookUrl, {
                         method: 'POST',
-                        body: formData
-                        // Não definir Content-Type - deixar o browser definir automaticamente
-                        // para incluir o boundary correto para multipart/form-data
+                        body: formData,
+                        // Headers para garantir compatibilidade
+                        headers: {
+                            'Accept': '*/*'
+                        }
                     });
 
                     console.log('Status da resposta:', response.status);
@@ -929,6 +937,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             console.log('DOM loaded, initializing uploader');
             console.log('Webhook URL configurada:', window.WEBHOOK_URL);
+            console.log('URL completa esperada:', 'https://n8n.remotedok.fun/webhook/envio-fotos');
             const uploader = new ImageUploader();
             
             // Add keyboard shortcuts
