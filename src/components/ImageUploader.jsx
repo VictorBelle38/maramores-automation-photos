@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const ImageUploader = () => {
   const [selectedImages, setSelectedImages] = useState([]);
@@ -8,6 +8,10 @@ const ImageUploader = () => {
   const [progressText, setProgressText] = useState("");
   const [message, setMessage] = useState({ type: "", text: "" });
   const [isDragOver, setIsDragOver] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null);
 
   const fileInputRef = useRef(null);
   const webhookUrl =
@@ -18,6 +22,23 @@ const ImageUploader = () => {
     "image/jpg",
     "image/png",
   ];
+
+  // Detectar se é mobile
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(
+        window.innerWidth < 768 ||
+          /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+            navigator.userAgent
+          )
+      );
+    };
+
+    checkIsMobile();
+    window.addEventListener("resize", checkIsMobile);
+
+    return () => window.removeEventListener("resize", checkIsMobile);
+  }, []);
 
   const validateFile = useCallback(
     (file) => {
@@ -89,6 +110,87 @@ const ImageUploader = () => {
   const removeImage = useCallback((index) => {
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
+
+  // Funções para seleção e troca no mobile
+  const handleImageClick = useCallback(
+    (index) => {
+      if (!isMobile) return;
+
+      if (selectedImageIndex === null) {
+        // Primeira seleção
+        setSelectedImageIndex(index);
+      } else if (selectedImageIndex === index) {
+        // Clicou na mesma imagem - deselecionar
+        setSelectedImageIndex(null);
+      } else {
+        // Segunda seleção - trocar posições
+        setSelectedImages((prev) => {
+          const newImages = [...prev];
+          [newImages[selectedImageIndex], newImages[index]] = [
+            newImages[index],
+            newImages[selectedImageIndex],
+          ];
+          return newImages;
+        });
+        setSelectedImageIndex(null);
+      }
+    },
+    [isMobile, selectedImageIndex]
+  );
+
+  // Funções para drag and drop de reordenação
+  const handleImageDragStart = useCallback((e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/html", e.target.outerHTML);
+    e.target.style.opacity = "0.5";
+  }, []);
+
+  const handleImageDragEnd = useCallback((e) => {
+    e.target.style.opacity = "";
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
+  const handleImageDragOver = useCallback((e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIndex(index);
+  }, []);
+
+  const handleImageDragLeave = useCallback((e) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+  }, []);
+
+  const handleImageDrop = useCallback(
+    (e, dropIndex) => {
+      e.preventDefault();
+
+      if (draggedIndex === null || draggedIndex === dropIndex) {
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+        return;
+      }
+
+      setSelectedImages((prev) => {
+        const newImages = [...prev];
+        const draggedItem = newImages[draggedIndex];
+
+        // Remove o item da posição original
+        newImages.splice(draggedIndex, 1);
+
+        // Insere o item na nova posição
+        newImages.splice(dropIndex, 0, draggedItem);
+
+        return newImages;
+      });
+
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+    },
+    [draggedIndex]
+  );
 
   const uploadImages = async (propertyName) => {
     try {
@@ -240,23 +342,71 @@ const ImageUploader = () => {
       {/* Image Preview */}
       {selectedImages.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-white">
-            Imagens Selecionadas ({selectedImages.length})
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-white">
+              Imagens Selecionadas ({selectedImages.length})
+            </h3>
+            <div className="text-sm text-white/70 flex items-center gap-2">
+              <i className="fas fa-info-circle"></i>
+              <span>
+                {isMobile
+                  ? "Clique em uma imagem e depois em outra para trocar de posição"
+                  : "Arraste as imagens para reordenar"}
+              </span>
+            </div>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {selectedImages.map((file, index) => (
-              <div key={index} className="image-card group">
+              <div
+                key={`${file.name}-${index}`}
+                className={`image-card group relative transition-all duration-200 ${
+                  !isMobile ? "cursor-move" : "cursor-pointer"
+                } ${draggedIndex === index ? "opacity-50 scale-95" : ""} ${
+                  dragOverIndex === index && draggedIndex !== index
+                    ? "ring-2 ring-blue-400 ring-opacity-75 scale-105"
+                    : ""
+                } ${
+                  isMobile && selectedImageIndex === index
+                    ? "ring-2 ring-yellow-400 ring-opacity-75 scale-105"
+                    : ""
+                }`}
+                draggable={!isMobile}
+                onDragStart={
+                  !isMobile ? (e) => handleImageDragStart(e, index) : undefined
+                }
+                onDragEnd={!isMobile ? handleImageDragEnd : undefined}
+                onDragOver={
+                  !isMobile ? (e) => handleImageDragOver(e, index) : undefined
+                }
+                onDragLeave={!isMobile ? handleImageDragLeave : undefined}
+                onDrop={
+                  !isMobile ? (e) => handleImageDrop(e, index) : undefined
+                }
+                onClick={isMobile ? () => handleImageClick(index) : undefined}
+              >
+                <div className="absolute top-1 left-1 z-10 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                  {index + 1}
+                </div>
+
+                {/* Indicador de seleção para mobile */}
+                {isMobile && selectedImageIndex === index && (
+                  <div className="absolute top-1 right-8 z-10 bg-yellow-500 text-black text-xs px-2 py-1 rounded-full font-bold">
+                    SELECIONADA
+                  </div>
+                )}
+
                 <img
                   src={URL.createObjectURL(file)}
                   alt={file.name}
                   className="w-full h-24 object-cover"
+                  draggable={false}
                 />
                 <button
                   type="button"
                   onClick={() => removeImage(index)}
-                  className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm transition-all duration-200 hover:scale-110"
+                  className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm transition-all duration-200 hover:scale-110 z-20"
                 >
-                  ×
+                  x
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-white text-xs p-1 text-center truncate">
                   {file.name}
