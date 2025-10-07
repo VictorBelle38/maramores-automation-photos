@@ -16,7 +16,7 @@ export default defineConfig({
     // Expor variáveis de ambiente para o cliente
     __WEBHOOK_URL__: JSON.stringify(
       process.env.VITE_WEBHOOK_URL ||
-        "https://seu-dominio.com/form/seu-webhook-id"
+        "https://n8nmaramores.bdntech.com.br/webhook/envio-fotos"
     ),
     __MAX_FILE_SIZE__: JSON.stringify(
       process.env.VITE_MAX_FILE_SIZE || "10485760"

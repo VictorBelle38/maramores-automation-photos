@@ -15,9 +15,10 @@ const ImageUploader = () => {
 
   const fileInputRef = useRef(null);
   const webhookUrl =
-    window.WEBHOOK_URL || "https://n8n.remotedok.fun/webhook/envio-fotos";
-  const maxFileSize = window.MAX_FILE_SIZE || 10 * 1024 * 1024;
-  const allowedTypes = window.ALLOWED_TYPES || [
+    window.__WEBHOOK_URL__ ||
+    "https://n8nmaramores.bdntech.com.br/webhook/envio-fotos";
+  const maxFileSize = window.__MAX_FILE_SIZE__ || 10 * 1024 * 1024;
+  const allowedTypes = window.__ALLOWED_TYPES__ || [
     "image/jpeg",
     "image/jpg",
     "image/png",
@@ -210,35 +211,143 @@ const ImageUploader = () => {
         );
       }
 
-      const formData = new FormData();
+      const batchSize = 5; // Tamanho do lote
+      const totalBatches = Math.ceil(selectedImages.length / batchSize);
+      let successfulUploads = 0;
+      let failedUploads = 0;
 
-      // Adiciona todas as imagens
-      selectedImages.forEach((file, index) => {
-        formData.append("Fotos", file);
-        console.log(
-          `Adicionando imagem ${index + 1}: ${file.name} (${file.size} bytes)`
+      setProgressText(`Iniciando upload em ${totalBatches} lote(s)...`);
+
+      // Delay inicial para o primeiro lote (servidor "aquecer")
+      if (totalBatches > 1) {
+        setProgressText("Preparando servidor...");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      // Processa cada lote
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const startIndex = batchIndex * batchSize;
+        const endIndex = Math.min(
+          startIndex + batchSize,
+          selectedImages.length
         );
-      });
+        const batchImages = selectedImages.slice(startIndex, endIndex);
 
-      // Adiciona o nome da propriedade
-      formData.append("Nome da Propriedade (Apelido)", propertyName);
-      formData.append("totalImages", selectedImages.length);
-      formData.append("uploadTimestamp", new Date().toISOString());
+        setProgressText(
+          `Enviando lote ${batchIndex + 1}/${totalBatches} (${
+            batchImages.length
+          } imagens)...`
+        );
 
-      setProgressText("Enviando imagens...");
-      setProgress(50);
+        // Sistema de retry para lotes que falharem
+        let batchSuccess = false;
+        let retryCount = 0;
+        const maxRetries = 2;
 
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        body: formData,
-      });
+        while (!batchSuccess && retryCount <= maxRetries) {
+          try {
+            if (retryCount > 0) {
+              console.log(
+                `Tentativa ${retryCount + 1} para o lote ${batchIndex + 1}...`
+              );
+              setProgressText(
+                `Tentativa ${retryCount + 1} - Lote ${
+                  batchIndex + 1
+                }/${totalBatches} (${batchImages.length} imagens)...`
+              );
+              // Pausa maior entre tentativas
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            }
 
-      if (response.ok) {
+            const formData = new FormData();
+
+            // Adiciona as imagens do lote atual
+            batchImages.forEach((file, index) => {
+              formData.append("Fotos", file);
+              console.log(
+                `Adicionando imagem ${startIndex + index + 1}: ${file.name} (${
+                  file.size
+                } bytes)`
+              );
+            });
+
+            // Adiciona informações do lote
+            formData.append("Nome da Propriedade (Apelido)", propertyName);
+            formData.append("batchNumber", batchIndex + 1);
+            formData.append("totalBatches", totalBatches);
+            formData.append("imagesInBatch", batchImages.length);
+            formData.append("totalImages", selectedImages.length);
+            formData.append("uploadTimestamp", new Date().toISOString());
+
+            const response = await fetch(webhookUrl, {
+              method: "POST",
+              body: formData,
+              headers: {
+                Accept: "application/json",
+              },
+            });
+
+            if (response.ok) {
+              successfulUploads += batchImages.length;
+              console.log(`Lote ${batchIndex + 1} enviado com sucesso!`);
+              batchSuccess = true;
+            } else {
+              const errorText = await response.text();
+              console.error(
+                `Erro no lote ${batchIndex + 1} (tentativa ${retryCount + 1}):`,
+                errorText
+              );
+
+              if (retryCount === maxRetries) {
+                failedUploads += batchImages.length;
+                setMessage({
+                  type: "error",
+                  text: `Erro no lote ${batchIndex + 1} após ${
+                    maxRetries + 1
+                  } tentativas. Continuando com os próximos lotes...`,
+                });
+              }
+            }
+          } catch (error) {
+            console.error(
+              `Erro no lote ${batchIndex + 1} (tentativa ${retryCount + 1}):`,
+              error
+            );
+
+            if (retryCount === maxRetries) {
+              failedUploads += batchImages.length;
+              setMessage({
+                type: "error",
+                text: `Erro no lote ${batchIndex + 1} após ${
+                  maxRetries + 1
+                } tentativas. Continuando com os próximos lotes...`,
+              });
+            }
+          }
+
+          retryCount++;
+        }
+
+        // Atualiza o progresso
+        const progressPercent = ((batchIndex + 1) / totalBatches) * 100;
+        setProgress(progressPercent);
+
+        // Pequena pausa entre lotes para evitar sobrecarga
+        if (batchIndex < totalBatches - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Resultado final
+      if (failedUploads === 0) {
         setProgress(100);
         setProgressText(
-          `Todas as ${selectedImages.length} imagens enviadas com sucesso!`
+          `Todas as ${selectedImages.length} imagens enviadas com sucesso em ${totalBatches} lote(s)!`
         );
-        setMessage({ type: "success", text: "Imagens enviadas com sucesso!" });
+        setMessage({
+          type: "success",
+          text: `Upload concluído! ${successfulUploads} imagens enviadas com sucesso.`,
+        });
 
         // Reset form after success
         setTimeout(() => {
@@ -247,12 +356,21 @@ const ImageUploader = () => {
           setProgress(0);
           setProgressText("");
           setMessage({ type: "", text: "" });
-        }, 2000);
+        }, 3000);
+      } else if (successfulUploads > 0) {
+        setProgress(100);
+        setProgressText("Upload parcialmente concluído");
+        setMessage({
+          type: "error",
+          text: `Upload parcial: ${successfulUploads} imagens enviadas, ${failedUploads} falharam. Tente novamente com as imagens que falharam.`,
+        });
       } else {
-        const errorText = await response.text();
-        throw new Error(
-          `HTTP error! status: ${response.status} - ${errorText}`
-        );
+        setProgress(0);
+        setProgressText("");
+        setMessage({
+          type: "error",
+          text: "Falha no upload de todos os lotes. Verifique sua conexão e tente novamente.",
+        });
       }
     } catch (error) {
       console.error("Upload error:", error);
