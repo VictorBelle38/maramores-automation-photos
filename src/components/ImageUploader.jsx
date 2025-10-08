@@ -216,7 +216,9 @@ const ImageUploader = () => {
       let successfulUploads = 0;
       let failedUploads = 0;
 
-      setProgressText(`Iniciando upload em ${totalBatches} lote(s)...`);
+      setProgressText(
+        `Iniciando upload em ${totalBatches} lote(s) (1 minuto entre cada lote)...`
+      );
 
       // Delay inicial para o primeiro lote (servidor "aquecer")
       if (totalBatches > 1) {
@@ -224,7 +226,7 @@ const ImageUploader = () => {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      // Processa cada lote
+      // Processa cada lote com delay de 1 minuto
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         const startIndex = batchIndex * batchSize;
         const endIndex = Math.min(
@@ -256,7 +258,7 @@ const ImageUploader = () => {
                 }/${totalBatches} (${batchImages.length} imagens)...`
               );
               // Pausa maior entre tentativas
-              await new Promise((resolve) => setTimeout(resolve, 2000));
+              await new Promise((resolve) => setTimeout(resolve, 3000));
             }
 
             const formData = new FormData();
@@ -304,7 +306,7 @@ const ImageUploader = () => {
                   type: "error",
                   text: `Erro no lote ${batchIndex + 1} após ${
                     maxRetries + 1
-                  } tentativas. Continuando com os próximos lotes...`,
+                  } tentativas: ${errorText}`,
                 });
               }
             }
@@ -320,7 +322,7 @@ const ImageUploader = () => {
                 type: "error",
                 text: `Erro no lote ${batchIndex + 1} após ${
                   maxRetries + 1
-                } tentativas. Continuando com os próximos lotes...`,
+                } tentativas: ${error.message}`,
               });
             }
           }
@@ -332,9 +334,10 @@ const ImageUploader = () => {
         const progressPercent = ((batchIndex + 1) / totalBatches) * 100;
         setProgress(progressPercent);
 
-        // Pequena pausa entre lotes para evitar sobrecarga
+        // Aguarda 1 minuto antes do próximo lote (só se não for o último)
         if (batchIndex < totalBatches - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setProgressText(`⏳ Aguardando 1 minuto antes do próximo lote...`);
+          await new Promise((resolve) => setTimeout(resolve, 60000)); // 60 segundos
         }
       }
 
@@ -342,7 +345,7 @@ const ImageUploader = () => {
       if (failedUploads === 0) {
         setProgress(100);
         setProgressText(
-          `Todas as ${selectedImages.length} imagens enviadas com sucesso em ${totalBatches} lote(s)!`
+          `🎉 Todas as ${selectedImages.length} imagens enviadas com sucesso em ${totalBatches} lote(s)!`
         );
         setMessage({
           type: "success",
@@ -359,7 +362,7 @@ const ImageUploader = () => {
         }, 3000);
       } else if (successfulUploads > 0) {
         setProgress(100);
-        setProgressText("Upload parcialmente concluído");
+        setProgressText("⚠️ Upload parcialmente concluído");
         setMessage({
           type: "error",
           text: `Upload parcial: ${successfulUploads} imagens enviadas, ${failedUploads} falharam. Tente novamente com as imagens que falharam.`,
@@ -369,7 +372,7 @@ const ImageUploader = () => {
         setProgressText("");
         setMessage({
           type: "error",
-          text: "Falha no upload de todos os lotes. Verifique sua conexão e tente novamente.",
+          text: "❌ Falha no upload de todos os lotes. Verifique sua conexão e tente novamente.",
         });
       }
     } catch (error) {
