@@ -524,7 +524,10 @@ const ImageUploader = () => {
                 />
                 <button
                   type="button"
-                  onClick={() => removeImage(index)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeImage(index);
+                  }}
                   className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm transition-all duration-200 hover:scale-110 z-20"
                 >
                   x
