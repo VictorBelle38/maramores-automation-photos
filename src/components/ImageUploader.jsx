@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import heic2any from "heic2any";
 
 const ImageUploader = () => {
+  // State now stores objects: { id, file, preview, name }
   const [selectedImages, setSelectedImages] = useState([]);
   const [propertyName, setPropertyName] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // New state for HEIC conversion
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState("");
   const [message, setMessage] = useState({ type: "", text: "" });
@@ -14,15 +17,24 @@ const ImageUploader = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(null);
 
   const fileInputRef = useRef(null);
-  const webhookUrl =
-    window.__WEBHOOK_URL__ ||
-    "https://n8nmaramores.bdntech.com.br/webhook/envio-fotos";
-  const maxFileSize = window.__MAX_FILE_SIZE__ || 10 * 1024 * 1024;
-  const allowedTypes = window.__ALLOWED_TYPES__ || [
+
+  // Configurações de ambiente vindas do window (definidas no main.jsx)
+  const webhookUrl = window.WEBHOOK_URL || "https://n8nmaramores.bdntech.com.br/webhook/envio-fotos";
+  const maxFileSize = window.MAX_FILE_SIZE || 10 * 1024 * 1024;
+  const allowedTypes = window.ALLOWED_TYPES || [
     "image/jpeg",
     "image/jpg",
     "image/png",
   ];
+
+  // Cleanup object URLs to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      selectedImages.forEach((img) => {
+        if (img.preview) URL.revokeObjectURL(img.preview);
+      });
+    };
+  }, [selectedImages]);
 
   // Detectar se é mobile
   useEffect(() => {
@@ -41,43 +53,94 @@ const ImageUploader = () => {
     return () => window.removeEventListener("resize", checkIsMobile);
   }, []);
 
-  const validateFile = useCallback(
-    (file) => {
-      if (!allowedTypes.includes(file.type)) {
-        return false;
-      }
-      if (file.size > maxFileSize) {
-        return false;
-      }
-      return true;
-    },
-    [allowedTypes, maxFileSize]
-  );
+  const getExt = (name = "") => name.split(".").pop()?.toLowerCase() || "";
+  const allowedExt = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+
+  const validateFile = useCallback((file) => {
+    const ext = getExt(file.name);
+    // Allow HEIC for processing even if not in allowedTypes yet (will be converted to JPEG)
+    const isHeic = ext === "heic" || ext === "heif";
+    const typeAllowed = allowedTypes.includes(file.type) || allowedExt.includes(ext) || isHeic;
+    const sizeAllowed = file.size <= maxFileSize;
+    return typeAllowed && sizeAllowed;
+  }, [allowedTypes, maxFileSize]);
 
   const processFiles = useCallback(
-    (files) => {
-      const validFiles = Array.from(files).filter(validateFile);
-      const invalidCount = files.length - validFiles.length;
+    async (files) => {
+      setIsProcessing(true);
+      setMessage({ type: "", text: "" });
 
-      if (invalidCount > 0) {
+      const fileArray = Array.from(files);
+      const validFiles = [];
+      let rejectedCount = 0;
+
+      for (const file of fileArray) {
+        if (!validateFile(file)) {
+          rejectedCount++;
+          continue;
+        }
+
+        let processedFile = file;
+        let fileName = file.name;
+
+        // Convert HEIC to JPEG
+        const ext = getExt(file.name);
+        if (ext === "heic" || ext === "heif" || file.type === "image/heic") {
+          try {
+            setProgressText(`Convertendo ${file.name}...`);
+            const convertedBlob = await heic2any({
+              blob: file,
+              toType: "image/jpeg",
+              quality: 0.8,
+            });
+
+            // Handle if result is array (gif-like heic) or single blob
+            const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+
+            processedFile = new File(
+              [blob],
+              file.name.replace(/\.(heic|heif)$/i, ".jpg"),
+              { type: "image/jpeg" }
+            );
+            fileName = processedFile.name;
+          } catch (err) {
+            console.error("Error converting HEIC:", err);
+            rejectedCount++;
+            continue;
+          }
+        }
+
+        // Create robust unique ID for deduplication
+        // Using combination of name + size + lastModified to be sure
+        const uniqueId = `${fileName}-${processedFile.size}-${processedFile.lastModified}`;
+
+        // Check for duplicates in current selection
+        const isDuplicate = selectedImages.some(img => img.id === uniqueId) ||
+                            validFiles.some(img => img.id === uniqueId);
+
+        if (!isDuplicate) {
+          validFiles.push({
+            id: uniqueId,
+            file: processedFile,
+            preview: URL.createObjectURL(processedFile),
+            name: fileName
+          });
+        }
+      }
+
+      if (rejectedCount > 0) {
         const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-        const allowedTypesText = allowedTypes
-          .map((type) => type.split("/")[1].toUpperCase())
-          .join(", ");
         setMessage({
           type: "error",
-          text: `Alguns arquivos foram rejeitados. Apenas imagens ${allowedTypesText} até ${maxSizeMB}MB são permitidas.`,
+          text: `${rejectedCount} arquivo(s) ignorado(s). Use apenas JPG/PNG/HEIC até ${maxSizeMB}MB.`,
         });
       }
 
-      setSelectedImages((prev) => {
-        const newImages = validFiles.filter(
-          (file) => !prev.find((img) => img.name === file.name)
-        );
-        return [...prev, ...newImages];
-      });
+      setSelectedImages((prev) => [...prev, ...validFiles]);
+      setIsProcessing(false);
+      setProgressText("");
     },
-    [validateFile, maxFileSize, allowedTypes]
+    [validateFile, maxFileSize, selectedImages]
   );
 
   const handleDragOver = useCallback((e) => {
@@ -104,12 +167,20 @@ const ImageUploader = () => {
     (e) => {
       const files = e.target.files;
       processFiles(files);
+      // Reset input so same file can be selected again if removed
+      e.target.value = "";
     },
     [processFiles]
   );
 
   const removeImage = useCallback((index) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+    setSelectedImages((prev) => {
+      const imgToRemove = prev[index];
+      if (imgToRemove && imgToRemove.preview) {
+        URL.revokeObjectURL(imgToRemove.preview);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   }, []);
 
   // Funções para seleção e troca no mobile
@@ -143,7 +214,8 @@ const ImageUploader = () => {
   const handleImageDragStart = useCallback((e, index) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/html", e.target.outerHTML);
+    // We can't drag the ghost image easily if it's not an img tag directly under cursor sometimes,
+    // but the default behavior usually works.
     e.target.style.opacity = "0.5";
   }, []);
 
@@ -194,11 +266,22 @@ const ImageUploader = () => {
   );
 
   const uploadImages = async (propertyName) => {
+    let wakeLock = null;
     try {
       setIsUploading(true);
       setProgress(0);
       setProgressText("Preparando upload...");
       setMessage({ type: "", text: "" });
+
+      // Request Screen Wake Lock
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Wake Lock is active');
+        } catch (err) {
+          console.warn('Wake Lock request failed:', err);
+        }
+      }
 
       // Verifica se a URL está correta
       if (
@@ -217,7 +300,7 @@ const ImageUploader = () => {
       let failedUploads = 0;
 
       setProgressText(
-        `Iniciando upload em ${totalBatches} lote(s) (1 minuto entre cada lote)...`
+        `Iniciando upload em ${totalBatches} lote(s) (1 minuto entre cada lote)...\nNÃO FECHE ESTA ABA.`
       );
 
       // Delay inicial para o primeiro lote (servidor "aquecer")
@@ -238,7 +321,7 @@ const ImageUploader = () => {
         setProgressText(
           `Enviando lote ${batchIndex + 1}/${totalBatches} (${
             batchImages.length
-          } imagens)...`
+          } imagens)...\nMantenha a tela ligada.`
         );
 
         // Sistema de retry para lotes que falharem
@@ -264,11 +347,11 @@ const ImageUploader = () => {
             const formData = new FormData();
 
             // Adiciona as imagens do lote atual
-            batchImages.forEach((file, index) => {
-              formData.append("Fotos", file);
+            batchImages.forEach((img, index) => {
+              formData.append("Fotos", img.file);
               console.log(
-                `Adicionando imagem ${startIndex + index + 1}: ${file.name} (${
-                  file.size
+                `Adicionando imagem ${startIndex + index + 1}: ${img.name} (${
+                  img.file.size
                 } bytes)`
               );
             });
@@ -336,8 +419,16 @@ const ImageUploader = () => {
 
         // Aguarda 1 minuto antes do próximo lote (só se não for o último)
         if (batchIndex < totalBatches - 1) {
-          setProgressText(`⏳ Aguardando 1 minuto antes do próximo lote...`);
-          await new Promise((resolve) => setTimeout(resolve, 60000)); // 60 segundos
+            // Use Date.now() loop for more robust timing on mobile background
+            const startWait = Date.now();
+            const waitTime = 60000;
+
+            while (Date.now() - startWait < waitTime) {
+                const remaining = Math.ceil((waitTime - (Date.now() - startWait)) / 1000);
+                setProgressText(`⏳ Aguardando ${remaining}s para o próximo lote...`);
+                // Update text every second
+                await new Promise(r => setTimeout(r, 1000));
+            }
         }
       }
 
@@ -385,6 +476,15 @@ const ImageUploader = () => {
       });
     } finally {
       setIsUploading(false);
+      // Release Wake Lock
+      if (wakeLock) {
+        try {
+            await wakeLock.release();
+            console.log('Wake Lock released');
+        } catch (err) {
+            console.error('Error releasing Wake Lock:', err);
+        }
+      }
     }
   };
 
@@ -411,7 +511,7 @@ const ImageUploader = () => {
   };
 
   const canSubmit =
-    selectedImages.length > 0 && propertyName.trim() !== "" && !isUploading;
+    selectedImages.length > 0 && propertyName.trim() !== "" && !isUploading && !isProcessing;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
@@ -436,24 +536,33 @@ const ImageUploader = () => {
           Selecionar Imagens
         </label>
         <div
-          className={`upload-area ${isDragOver ? "dragover" : ""}`}
+          className={`upload-area ${isDragOver ? "dragover" : ""} ${isProcessing ? "opacity-50 pointer-events-none" : ""}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isProcessing && fileInputRef.current?.click()}
         >
-          <i className="fas fa-cloud-upload-alt text-6xl text-primary-400 mb-4 block transition-all duration-300 hover:text-secondary-400 hover:scale-110"></i>
-          <p className="text-xl font-bold text-white mb-2">
-            Clique aqui ou arraste as imagens
-          </p>
-          <p className="text-white/70">
-            PNG, JPG, JPEG até {Math.round(maxFileSize / (1024 * 1024))}MB cada
-          </p>
+          {isProcessing ? (
+             <div className="flex flex-col items-center">
+                <i className="fas fa-cog fa-spin text-6xl text-primary-400 mb-4"></i>
+                <p className="text-xl font-bold text-white mb-2">Processando imagens...</p>
+             </div>
+          ) : (
+            <>
+                <i className="fas fa-cloud-upload-alt text-6xl text-primary-400 mb-4 block transition-all duration-300 hover:text-secondary-400 hover:scale-110"></i>
+                <p className="text-xl font-bold text-white mb-2">
+                    Clique aqui ou arraste as imagens
+                </p>
+                <p className="text-white/70">
+                    JPG, PNG, HEIC até {Math.round(maxFileSize / (1024 * 1024))}MB cada
+                </p>
+            </>
+          )}
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*"
+            accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/*"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -477,9 +586,9 @@ const ImageUploader = () => {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {selectedImages.map((file, index) => (
+            {selectedImages.map((img, index) => (
               <div
-                key={`${file.name}-${index}`}
+                key={img.id}
                 className={`image-card group relative transition-all duration-200 ${
                   !isMobile ? "cursor-move" : "cursor-pointer"
                 } ${draggedIndex === index ? "opacity-50 scale-95" : ""} ${
@@ -517,8 +626,8 @@ const ImageUploader = () => {
                 )}
 
                 <img
-                  src={URL.createObjectURL(file)}
-                  alt={file.name}
+                  src={img.preview}
+                  alt={img.name}
                   className="w-full h-24 object-cover"
                   draggable={false}
                 />
@@ -533,7 +642,7 @@ const ImageUploader = () => {
                   x
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-white text-xs p-1 text-center truncate">
-                  {file.name}
+                  {img.name}
                 </div>
               </div>
             ))}
@@ -542,7 +651,7 @@ const ImageUploader = () => {
       )}
 
       {/* Progress Bar */}
-      {isUploading && (
+      {(isUploading || isProcessing) && (
         <div className="space-y-2">
           <div className="progress-bar">
             <div
@@ -550,7 +659,7 @@ const ImageUploader = () => {
               style={{ width: `${progress}%` }}
             ></div>
           </div>
-          <p className="text-center text-white/70 text-sm">{progressText}</p>
+          <p className="text-center text-white/70 text-sm whitespace-pre-line">{progressText}</p>
         </div>
       )}
 
@@ -567,6 +676,11 @@ const ImageUploader = () => {
             <i className="fas fa-spinner fa-spin"></i>
             Enviando...
           </>
+        ) : isProcessing ? (
+           <>
+            <i className="fas fa-cog fa-spin"></i>
+            Processando...
+           </>
         ) : (
           <>
             <i className="fas fa-paper-plane"></i>
