@@ -31,6 +31,7 @@ const ImageUploader = () => {
   const mobileMaxDimension = window.MOBILE_MAX_DIMENSION || 2560;
   const mobileJpegQuality = window.MOBILE_JPEG_QUALITY || 0.86;
   const batchSize = window.BATCH_SIZE || 5;
+  const batchDelayMs = window.BATCH_DELAY_MS || 30000;
   const maxMobileImagesInMemory = 40;
   const isIOSSafari =
     /iP(hone|ad|od)/i.test(navigator.userAgent) &&
@@ -451,7 +452,7 @@ const ImageUploader = () => {
     [draggedIndex]
   );
 
-  const buildDynamicBatches = useCallback(
+  const buildFixedBatches = useCallback(
     (images) => {
       const batches = [];
       for (let i = 0; i < images.length; i += batchSize) {
@@ -492,8 +493,11 @@ const ImageUploader = () => {
         );
       }
 
-      const batches = buildDynamicBatches(selectedImages);
+      const batches = buildFixedBatches(selectedImages);
       const totalBatches = batches.length;
+      const uploadSessionId = `sess-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
       let successfulUploads = 0;
       let failedUploads = 0;
 
@@ -508,6 +512,7 @@ const ImageUploader = () => {
 
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
         const batchImages = batches[batchIndex];
+        const batchSequenceStartIndex = batchIndex * batchSize;
 
         setProgressText(
           `Processando lote ${batchIndex + 1}/${totalBatches} (${batchImages.length} imagens)...`
@@ -544,7 +549,7 @@ const ImageUploader = () => {
         }
 
         setProgressText(
-          `Enviando lote ${batchIndex + 1}/${totalBatches} (${preparedBatch.length} imagens)...`
+          `Enviando lote ${batchIndex + 1}/${totalBatches} (${preparedBatch.length} imagens, enviadas ${successfulUploads}/${selectedImages.length})...`
         );
 
         let batchSuccess = false;
@@ -573,6 +578,8 @@ const ImageUploader = () => {
             formData.append("batchNumber", batchIndex + 1);
             formData.append("totalBatches", totalBatches);
             formData.append("imagesInBatch", preparedBatch.length);
+            formData.append("uploadSessionId", uploadSessionId);
+            formData.append("batchSequenceStartIndex", batchSequenceStartIndex);
             formData.append("totalImages", selectedImages.length);
             formData.append("uploadTimestamp", new Date().toISOString());
 
@@ -628,7 +635,7 @@ const ImageUploader = () => {
 
         if (batchIndex < totalBatches - 1) {
           const startWait = Date.now();
-          const waitTime = 2500;
+          const waitTime = batchDelayMs;
 
           while (Date.now() - startWait < waitTime) {
             const remaining = Math.ceil(

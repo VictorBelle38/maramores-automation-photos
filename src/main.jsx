@@ -14,6 +14,7 @@ window.ALLOWED_TYPES = __ALLOWED_TYPES__.split(",").map((type) => type.trim());
 window.MOBILE_MAX_DIMENSION = parseInt(__MOBILE_MAX_DIMENSION__) || 2560;
 window.MOBILE_JPEG_QUALITY = parseFloat(__MOBILE_JPEG_QUALITY__) || 0.86;
 window.BATCH_SIZE = parseInt(__BATCH_SIZE__) || 5;
+window.BATCH_DELAY_MS = parseInt(__BATCH_DELAY_MS__) || 30000;
 window.MOBILE_BATCH_MAX_MB = parseFloat(__MOBILE_BATCH_MAX_MB__) || 8;
 window.MOBILE_BATCH_MAX_FILES = parseInt(__MOBILE_BATCH_MAX_FILES__) || 3;
 

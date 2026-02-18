@@ -80,6 +80,7 @@ VITE_MAX_UPLOAD_FILE_SIZE=20971520
 VITE_MOBILE_MAX_DIMENSION=2560
 VITE_MOBILE_JPEG_QUALITY=0.86
 VITE_BATCH_SIZE=5
+VITE_BATCH_DELAY_MS=30000
 ```
 
 ### Deploy na Vercel
@@ -91,6 +92,7 @@ VITE_BATCH_SIZE=5
    - `VITE_MAX_INPUT_FILE_SIZE`: Tamanho máximo da imagem original (entrada)
    - `VITE_MAX_UPLOAD_FILE_SIZE`: Tamanho máximo após otimização
    - `VITE_BATCH_SIZE`: Quantidade de imagens por lote
+   - `VITE_BATCH_DELAY_MS`: Intervalo em ms entre lotes
 
 2. **Deploy:**
    ```bash
