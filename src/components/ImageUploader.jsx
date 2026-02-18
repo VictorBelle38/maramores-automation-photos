@@ -32,7 +32,7 @@ const ImageUploader = () => {
   const mobileJpegQuality = window.MOBILE_JPEG_QUALITY || 0.86;
   const batchSize = window.BATCH_SIZE || 5;
   const batchDelayMs = window.BATCH_DELAY_MS || 30000;
-  const maxMobileImagesInMemory = 40;
+  const maxMobileImagesInMemory = 50;
   const isIOSSafari =
     /iP(hone|ad|od)/i.test(navigator.userAgent) &&
     /WebKit/i.test(navigator.userAgent) &&
