@@ -187,104 +187,118 @@ const ImageUploader = () => {
   }, [allowedTypes, maxFileSize]);
 
   const processFiles = useCallback(
-    async (files) => {
+    async (fileArray) => {
+      if (!Array.isArray(fileArray) || fileArray.length === 0) {
+        return;
+      }
+
       setIsProcessing(true);
       setMessage({ type: "", text: "" });
+      setProgressText("Iniciando processamento...");
 
-      const fileArray = Array.from(files);
       const validFiles = [];
       let rejectedCount = 0;
       const currentMobileCount = isMobile ? selectedImages.length : 0;
 
-      if (isMobile && currentMobileCount >= maxMobileImagesInMemory) {
-        setMessage({
-          type: "error",
-          text: `Limite de ${maxMobileImagesInMemory} imagens no mobile para evitar travamentos.`,
-        });
-        setIsProcessing(false);
-        return;
-      }
-
-      for (const [index, file] of fileArray.entries()) {
-        if (!validateFile(file)) {
-          rejectedCount++;
-          continue;
+      try {
+        if (isMobile && currentMobileCount >= maxMobileImagesInMemory) {
+          setMessage({
+            type: "error",
+            text: `Limite de ${maxMobileImagesInMemory} imagens no mobile para evitar travamentos.`,
+          });
+          return;
         }
 
-        if (
-          isMobile &&
-          currentMobileCount + validFiles.length >= maxMobileImagesInMemory
-        ) {
-          rejectedCount++;
-          continue;
-        }
-
-        let optimizedFile;
-        let previewUrl;
-
-        try {
-          setProgressText(
-            `Processando ${index + 1}/${fileArray.length}: ${file.name}`
-          );
-          let sourceBlob = file;
-
-          if (isHeicFile(file)) {
-            setProgressText(`Convertendo HEIC: ${file.name}`);
-            const convertedBlob = await heic2any({
-              blob: file,
-              toType: "image/jpeg",
-              quality: mobileJpegQuality,
-            });
-            sourceBlob = Array.isArray(convertedBlob)
-              ? convertedBlob[0]
-              : convertedBlob;
+        for (const [index, file] of fileArray.entries()) {
+          if (!validateFile(file)) {
+            rejectedCount++;
+            continue;
           }
 
-          setProgressText(`Otimizando imagem: ${file.name}`);
-          optimizedFile = await buildOptimizedFile(
-            sourceBlob,
-            file.name,
-            mobileJpegQuality
-          );
-          previewUrl = await buildThumbnailUrl(optimizedFile);
-        } catch (err) {
-          console.error("Error processing image:", err);
-          rejectedCount++;
-          continue;
+          if (
+            isMobile &&
+            currentMobileCount + validFiles.length >= maxMobileImagesInMemory
+          ) {
+            rejectedCount++;
+            continue;
+          }
+
+          let optimizedFile;
+          let previewUrl;
+
+          try {
+            setProgressText(
+              `Processando ${index + 1}/${fileArray.length}: ${file.name}`
+            );
+            let sourceBlob = file;
+
+            if (isHeicFile(file)) {
+              setProgressText(`Convertendo HEIC: ${file.name}`);
+              const convertedBlob = await heic2any({
+                blob: file,
+                toType: "image/jpeg",
+                quality: mobileJpegQuality,
+              });
+              sourceBlob = Array.isArray(convertedBlob)
+                ? convertedBlob[0]
+                : convertedBlob;
+            }
+
+            setProgressText(`Otimizando imagem: ${file.name}`);
+            optimizedFile = await buildOptimizedFile(
+              sourceBlob,
+              file.name,
+              mobileJpegQuality
+            );
+            previewUrl = await buildThumbnailUrl(optimizedFile);
+          } catch (err) {
+            console.error("Error processing image:", err);
+            rejectedCount++;
+            continue;
+          }
+
+          const uniqueId = `${optimizedFile.name}-${optimizedFile.size}-${optimizedFile.lastModified}`;
+          const isDuplicate =
+            selectedImages.some((img) => img.id === uniqueId) ||
+            validFiles.some((img) => img.id === uniqueId);
+
+          if (!isDuplicate) {
+            validFiles.push({
+              id: uniqueId,
+              file: optimizedFile,
+              preview: previewUrl,
+              name: optimizedFile.name,
+            });
+          } else if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+
+          if (isMobile || isIOSSafari) {
+            await wait(150);
+          }
         }
 
-        const uniqueId = `${optimizedFile.name}-${optimizedFile.size}-${optimizedFile.lastModified}`;
-        const isDuplicate =
-          selectedImages.some((img) => img.id === uniqueId) ||
-          validFiles.some((img) => img.id === uniqueId);
-
-        if (!isDuplicate) {
-          validFiles.push({
-            id: uniqueId,
-            file: optimizedFile,
-            preview: previewUrl,
-            name: optimizedFile.name,
+        if (validFiles.length === 0 && rejectedCount === 0) {
+          setMessage({
+            type: "error",
+            text: "Nenhuma imagem foi selecionada.",
           });
-        } else if (previewUrl) {
-          URL.revokeObjectURL(previewUrl);
+          return;
         }
 
-        if (isMobile || isIOSSafari) {
-          await wait(80);
+        if (rejectedCount > 0) {
+          const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
+          setMessage({
+            type: "error",
+            text: `${rejectedCount} arquivo(s) ignorado(s). Use JPG/PNG/HEIC ate ${maxSizeMB}MB.`,
+          });
         }
-      }
 
-      if (rejectedCount > 0) {
-        const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-        setMessage({
-          type: "error",
-          text: `${rejectedCount} arquivo(s) ignorado(s). Use JPG/PNG/HEIC ate ${maxSizeMB}MB.`,
-        });
+        setSelectedImages((prev) => [...prev, ...validFiles]);
+      } finally {
+        setIsProcessing(false);
+        setProgressText("");
       }
-
-      setSelectedImages((prev) => [...prev, ...validFiles]);
-      setIsProcessing(false);
-      setProgressText("");
     },
     [
       buildOptimizedFile,
@@ -313,18 +327,26 @@ const ImageUploader = () => {
     (e) => {
       e.preventDefault();
       setIsDragOver(false);
-      const files = e.dataTransfer.files;
-      processFiles(files);
+      const files = e.dataTransfer?.files;
+      const fileArray = files ? Array.from(files) : [];
+      processFiles(fileArray);
     },
     [processFiles]
   );
 
   const handleFileSelect = useCallback(
     (e) => {
-      const files = e.target.files;
-      processFiles(files);
+      const files = e.target?.files;
+      if (!files || files.length === 0) {
+        return;
+      }
+      const fileArray = Array.from(files);
       // Reset input so same file can be selected again if removed
       e.target.value = "";
+      setProgressText("Selecionando arquivos...");
+      setTimeout(() => {
+        processFiles(fileArray);
+      }, 0);
     },
     [processFiles]
   );
@@ -704,7 +726,6 @@ const ImageUploader = () => {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => !isProcessing && fileInputRef.current?.click()}
         >
           {isProcessing ? (
              <div className="flex flex-col items-center">
@@ -726,9 +747,11 @@ const ImageUploader = () => {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/*"
+            accept="image/*,.heic,.heif"
             onChange={handleFileSelect}
-            className="hidden"
+            className="upload-input-overlay"
+            disabled={isProcessing}
+            aria-label="Selecionar imagens"
           />
         </div>
       </div>

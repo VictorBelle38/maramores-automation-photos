@@ -33,11 +33,15 @@
   }
 
   .upload-area {
-    @apply border-2 border-dashed border-primary-400/50 rounded-2xl p-12 text-center cursor-pointer transition-all duration-300 hover:border-primary-400 hover:bg-primary-500/5 hover:scale-[1.02];
+    @apply relative border-2 border-dashed border-primary-400/50 rounded-2xl p-12 text-center cursor-pointer transition-all duration-300 hover:border-primary-400 hover:bg-primary-500/5 hover:scale-[1.02];
   }
 
   .upload-area.dragover {
     @apply border-secondary-400 bg-secondary-500/10 scale-105;
+  }
+
+  .upload-input-overlay {
+    @apply absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20;
   }
 
   .image-card {
