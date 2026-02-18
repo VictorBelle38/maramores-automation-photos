@@ -74,8 +74,12 @@ Crie um arquivo `.env.local` baseado no `.env.example`:
 ```bash
 # .env.local
 VITE_WEBHOOK_URL=https://seu-webhook-n8n.com/form/123
-VITE_MAX_FILE_SIZE=10485760
-VITE_ALLOWED_TYPES=image/jpeg,image/jpg,image/png
+VITE_ALLOWED_TYPES=image/jpeg,image/jpg,image/png,image/heic,image/heif
+VITE_MAX_INPUT_FILE_SIZE=83886080
+VITE_MAX_UPLOAD_FILE_SIZE=20971520
+VITE_MOBILE_MAX_DIMENSION=2560
+VITE_MOBILE_JPEG_QUALITY=0.86
+VITE_BATCH_SIZE=5
 ```
 
 ### Deploy na Vercel
@@ -83,8 +87,10 @@ VITE_ALLOWED_TYPES=image/jpeg,image/jpg,image/png
 1. **Configure as variáveis de ambiente na Vercel:**
 
    - `VITE_WEBHOOK_URL`: Sua URL do webhook n8n
-   - `VITE_MAX_FILE_SIZE`: Tamanho máximo em bytes
    - `VITE_ALLOWED_TYPES`: Tipos permitidos separados por vírgula
+   - `VITE_MAX_INPUT_FILE_SIZE`: Tamanho máximo da imagem original (entrada)
+   - `VITE_MAX_UPLOAD_FILE_SIZE`: Tamanho máximo após otimização
+   - `VITE_BATCH_SIZE`: Quantidade de imagens por lote
 
 2. **Deploy:**
    ```bash
