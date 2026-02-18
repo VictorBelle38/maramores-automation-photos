@@ -24,5 +24,17 @@ export default defineConfig({
     __ALLOWED_TYPES__: JSON.stringify(
       process.env.VITE_ALLOWED_TYPES || "image/jpeg,image/jpg,image/png"
     ),
+    __MOBILE_MAX_DIMENSION__: JSON.stringify(
+      process.env.VITE_MOBILE_MAX_DIMENSION || "2048"
+    ),
+    __MOBILE_JPEG_QUALITY__: JSON.stringify(
+      process.env.VITE_MOBILE_JPEG_QUALITY || "0.78"
+    ),
+    __MOBILE_BATCH_MAX_MB__: JSON.stringify(
+      process.env.VITE_MOBILE_BATCH_MAX_MB || "8"
+    ),
+    __MOBILE_BATCH_MAX_FILES__: JSON.stringify(
+      process.env.VITE_MOBILE_BATCH_MAX_FILES || "3"
+    ),
   },
 });

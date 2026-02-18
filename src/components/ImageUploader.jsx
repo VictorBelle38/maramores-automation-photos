@@ -17,6 +17,7 @@ const ImageUploader = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(null);
 
   const fileInputRef = useRef(null);
+  const selectedImagesRef = useRef([]);
 
   // Configurações de ambiente vindas do window (definidas no main.jsx)
   const webhookUrl = window.WEBHOOK_URL || "https://n8nmaramores.bdntech.com.br/webhook/envio-fotos";
@@ -26,15 +27,29 @@ const ImageUploader = () => {
     "image/jpg",
     "image/png",
   ];
+  const mobileMaxDimension = window.MOBILE_MAX_DIMENSION || 2048;
+  const mobileJpegQuality = window.MOBILE_JPEG_QUALITY || 0.78;
+  const mobileBatchMaxMB = window.MOBILE_BATCH_MAX_MB || 8;
+  const mobileBatchMaxFiles = window.MOBILE_BATCH_MAX_FILES || 3;
+  const maxMobileImagesInMemory = 30;
+  const isIOSSafari =
+    /iP(hone|ad|od)/i.test(navigator.userAgent) &&
+    /WebKit/i.test(navigator.userAgent) &&
+    !/CriOS|FxiOS|EdgiOS/i.test(navigator.userAgent);
+
+  // Keep latest list for cleanup on unmount
+  useEffect(() => {
+    selectedImagesRef.current = selectedImages;
+  }, [selectedImages]);
 
   // Cleanup object URLs to prevent memory leaks
   useEffect(() => {
     return () => {
-      selectedImages.forEach((img) => {
+      selectedImagesRef.current.forEach((img) => {
         if (img.preview) URL.revokeObjectURL(img.preview);
       });
     };
-  }, [selectedImages]);
+  }, []);
 
   // Detectar se é mobile
   useEffect(() => {
@@ -55,12 +70,118 @@ const ImageUploader = () => {
 
   const getExt = (name = "") => name.split(".").pop()?.toLowerCase() || "";
   const allowedExt = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+  const isHeicFile = (file) => {
+    const ext = getExt(file.name);
+    return (
+      ext === "heic" ||
+      ext === "heif" ||
+      file.type === "image/heic" ||
+      file.type === "image/heif"
+    );
+  };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const loadImageFromBlob = useCallback((blob) => {
+    return new Promise((resolve, reject) => {
+      const imageUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(imageUrl);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(imageUrl);
+        reject(new Error("Nao foi possivel ler a imagem."));
+      };
+      img.src = imageUrl;
+    });
+  }, []);
+
+  const canvasToBlob = useCallback((canvas, type, quality) => {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Falha ao converter canvas para blob."));
+            return;
+          }
+          resolve(blob);
+        },
+        type,
+        quality
+      );
+    });
+  }, []);
+
+  const buildOptimizedFile = useCallback(
+    async (blob, originalName, quality) => {
+      const image = await loadImageFromBlob(blob);
+      const canvas = document.createElement("canvas");
+      const scale = Math.min(
+        1,
+        mobileMaxDimension / Math.max(image.width, image.height)
+      );
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) {
+        throw new Error("Falha ao iniciar contexto de imagem.");
+      }
+
+      context.drawImage(image, 0, 0, width, height);
+      const optimizedBlob = await canvasToBlob(canvas, "image/jpeg", quality);
+      canvas.width = 0;
+      canvas.height = 0;
+
+      const targetName = originalName.replace(
+        /\.(heic|heif|png|webp|jpeg|jpg)$/i,
+        ".jpg"
+      );
+
+      return new File([optimizedBlob], targetName, {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      });
+    },
+    [canvasToBlob, loadImageFromBlob, mobileMaxDimension]
+  );
+
+  const buildThumbnailUrl = useCallback(
+    async (file) => {
+      const image = await loadImageFromBlob(file);
+      const canvas = document.createElement("canvas");
+      const maxThumbDimension = 420;
+      const scale = Math.min(
+        1,
+        maxThumbDimension / Math.max(image.width, image.height)
+      );
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) {
+        throw new Error("Falha ao gerar preview da imagem.");
+      }
+
+      context.drawImage(image, 0, 0, width, height);
+      const thumbBlob = await canvasToBlob(canvas, "image/jpeg", 0.7);
+      canvas.width = 0;
+      canvas.height = 0;
+
+      return URL.createObjectURL(thumbBlob);
+    },
+    [canvasToBlob, loadImageFromBlob]
+  );
 
   const validateFile = useCallback((file) => {
     const ext = getExt(file.name);
-    // Allow HEIC for processing even if not in allowedTypes yet (will be converted to JPEG)
-    const isHeic = ext === "heic" || ext === "heif";
-    const typeAllowed = allowedTypes.includes(file.type) || allowedExt.includes(ext) || isHeic;
+    const typeAllowed =
+      allowedTypes.includes(file.type) || allowedExt.includes(ext) || isHeicFile(file);
     const sizeAllowed = file.size <= maxFileSize;
     return typeAllowed && sizeAllowed;
   }, [allowedTypes, maxFileSize]);
@@ -73,58 +194,83 @@ const ImageUploader = () => {
       const fileArray = Array.from(files);
       const validFiles = [];
       let rejectedCount = 0;
+      const currentMobileCount = isMobile ? selectedImages.length : 0;
 
-      for (const file of fileArray) {
+      if (isMobile && currentMobileCount >= maxMobileImagesInMemory) {
+        setMessage({
+          type: "error",
+          text: `Limite de ${maxMobileImagesInMemory} imagens no mobile para evitar travamentos.`,
+        });
+        setIsProcessing(false);
+        return;
+      }
+
+      for (const [index, file] of fileArray.entries()) {
         if (!validateFile(file)) {
           rejectedCount++;
           continue;
         }
 
-        let processedFile = file;
-        let fileName = file.name;
+        if (
+          isMobile &&
+          currentMobileCount + validFiles.length >= maxMobileImagesInMemory
+        ) {
+          rejectedCount++;
+          continue;
+        }
 
-        // Convert HEIC to JPEG
-        const ext = getExt(file.name);
-        if (ext === "heic" || ext === "heif" || file.type === "image/heic") {
-          try {
-            setProgressText(`Convertendo ${file.name}...`);
+        let optimizedFile;
+        let previewUrl;
+
+        try {
+          setProgressText(
+            `Processando ${index + 1}/${fileArray.length}: ${file.name}`
+          );
+          let sourceBlob = file;
+
+          if (isHeicFile(file)) {
+            setProgressText(`Convertendo HEIC: ${file.name}`);
             const convertedBlob = await heic2any({
               blob: file,
               toType: "image/jpeg",
-              quality: 0.8,
+              quality: mobileJpegQuality,
             });
-
-            // Handle if result is array (gif-like heic) or single blob
-            const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-
-            processedFile = new File(
-              [blob],
-              file.name.replace(/\.(heic|heif)$/i, ".jpg"),
-              { type: "image/jpeg" }
-            );
-            fileName = processedFile.name;
-          } catch (err) {
-            console.error("Error converting HEIC:", err);
-            rejectedCount++;
-            continue;
+            sourceBlob = Array.isArray(convertedBlob)
+              ? convertedBlob[0]
+              : convertedBlob;
           }
+
+          setProgressText(`Otimizando imagem: ${file.name}`);
+          optimizedFile = await buildOptimizedFile(
+            sourceBlob,
+            file.name,
+            mobileJpegQuality
+          );
+          previewUrl = await buildThumbnailUrl(optimizedFile);
+        } catch (err) {
+          console.error("Error processing image:", err);
+          rejectedCount++;
+          continue;
         }
 
-        // Create robust unique ID for deduplication
-        // Using combination of name + size + lastModified to be sure
-        const uniqueId = `${fileName}-${processedFile.size}-${processedFile.lastModified}`;
-
-        // Check for duplicates in current selection
-        const isDuplicate = selectedImages.some(img => img.id === uniqueId) ||
-                            validFiles.some(img => img.id === uniqueId);
+        const uniqueId = `${optimizedFile.name}-${optimizedFile.size}-${optimizedFile.lastModified}`;
+        const isDuplicate =
+          selectedImages.some((img) => img.id === uniqueId) ||
+          validFiles.some((img) => img.id === uniqueId);
 
         if (!isDuplicate) {
           validFiles.push({
             id: uniqueId,
-            file: processedFile,
-            preview: URL.createObjectURL(processedFile),
-            name: fileName
+            file: optimizedFile,
+            preview: previewUrl,
+            name: optimizedFile.name,
           });
+        } else if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+
+        if (isMobile || isIOSSafari) {
+          await wait(80);
         }
       }
 
@@ -132,7 +278,7 @@ const ImageUploader = () => {
         const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
         setMessage({
           type: "error",
-          text: `${rejectedCount} arquivo(s) ignorado(s). Use apenas JPG/PNG/HEIC até ${maxSizeMB}MB.`,
+          text: `${rejectedCount} arquivo(s) ignorado(s). Use JPG/PNG/HEIC ate ${maxSizeMB}MB.`,
         });
       }
 
@@ -140,7 +286,17 @@ const ImageUploader = () => {
       setIsProcessing(false);
       setProgressText("");
     },
-    [validateFile, maxFileSize, selectedImages]
+    [
+      buildOptimizedFile,
+      buildThumbnailUrl,
+      isIOSSafari,
+      isMobile,
+      maxFileSize,
+      maxMobileImagesInMemory,
+      mobileJpegQuality,
+      selectedImages,
+      validateFile,
+    ]
   );
 
   const handleDragOver = useCallback((e) => {
@@ -265,6 +421,39 @@ const ImageUploader = () => {
     [draggedIndex]
   );
 
+  const buildDynamicBatches = useCallback(
+    (images) => {
+      const maxBatchBytes = mobileBatchMaxMB * 1024 * 1024;
+      const batches = [];
+      let currentBatch = [];
+      let currentSize = 0;
+
+      for (const image of images) {
+        const fileSize = image.file.size;
+        const wouldExceedSize = currentSize + fileSize > maxBatchBytes;
+        const wouldExceedCount = currentBatch.length >= mobileBatchMaxFiles;
+        const shouldFlushBatch =
+          currentBatch.length > 0 && (wouldExceedSize || wouldExceedCount);
+
+        if (shouldFlushBatch) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentSize = 0;
+        }
+
+        currentBatch.push(image);
+        currentSize += fileSize;
+      }
+
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+      }
+
+      return batches;
+    },
+    [mobileBatchMaxFiles, mobileBatchMaxMB]
+  );
+
   const uploadImages = async (propertyName) => {
     let wakeLock = null;
     try {
@@ -273,58 +462,46 @@ const ImageUploader = () => {
       setProgressText("Preparando upload...");
       setMessage({ type: "", text: "" });
 
-      // Request Screen Wake Lock
-      if ('wakeLock' in navigator) {
+      if ("wakeLock" in navigator) {
         try {
-          wakeLock = await navigator.wakeLock.request('screen');
-          console.log('Wake Lock is active');
+          wakeLock = await navigator.wakeLock.request("screen");
+          console.log("Wake Lock is active");
         } catch (err) {
-          console.warn('Wake Lock request failed:', err);
+          console.warn("Wake Lock request failed:", err);
         }
       }
 
-      // Verifica se a URL está correta
       if (
         !webhookUrl ||
         webhookUrl.includes("{{WEBHOOK_URL}}") ||
         webhookUrl.includes("seu-dominio.com")
       ) {
         throw new Error(
-          "URL do formulário não configurada corretamente. Verifique as variáveis de ambiente na Vercel."
+          "URL do formulario nao configurada corretamente. Verifique as variaveis de ambiente na Vercel."
         );
       }
 
-      const batchSize = 5; // Tamanho do lote
-      const totalBatches = Math.ceil(selectedImages.length / batchSize);
+      const batches = buildDynamicBatches(selectedImages);
+      const totalBatches = batches.length;
       let successfulUploads = 0;
       let failedUploads = 0;
 
       setProgressText(
-        `Iniciando upload em ${totalBatches} lote(s) (1 minuto entre cada lote)...\nNÃO FECHE ESTA ABA.`
+        `Iniciando upload em ${totalBatches} lote(s) com envio seguro para mobile...`
       );
 
-      // Delay inicial para o primeiro lote (servidor "aquecer")
       if (totalBatches > 1) {
         setProgressText("Preparando servidor...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await wait(1500);
       }
 
-      // Processa cada lote com delay de 1 minuto
       for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-        const startIndex = batchIndex * batchSize;
-        const endIndex = Math.min(
-          startIndex + batchSize,
-          selectedImages.length
-        );
-        const batchImages = selectedImages.slice(startIndex, endIndex);
+        const batchImages = batches[batchIndex];
 
         setProgressText(
-          `Enviando lote ${batchIndex + 1}/${totalBatches} (${
-            batchImages.length
-          } imagens)...\nMantenha a tela ligada.`
+          `Enviando lote ${batchIndex + 1}/${totalBatches} (${batchImages.length} imagens)...`
         );
 
-        // Sistema de retry para lotes que falharem
         let batchSuccess = false;
         let retryCount = 0;
         const maxRetries = 2;
@@ -332,31 +509,21 @@ const ImageUploader = () => {
         while (!batchSuccess && retryCount <= maxRetries) {
           try {
             if (retryCount > 0) {
-              console.log(
-                `Tentativa ${retryCount + 1} para o lote ${batchIndex + 1}...`
-              );
               setProgressText(
-                `Tentativa ${retryCount + 1} - Lote ${
-                  batchIndex + 1
-                }/${totalBatches} (${batchImages.length} imagens)...`
+                `Tentativa ${retryCount + 1} - Lote ${batchIndex + 1}/${totalBatches}`
               );
-              // Pausa maior entre tentativas
-              await new Promise((resolve) => setTimeout(resolve, 3000));
+              await wait(3000);
             }
 
             const formData = new FormData();
 
-            // Adiciona as imagens do lote atual
             batchImages.forEach((img, index) => {
               formData.append("Fotos", img.file);
               console.log(
-                `Adicionando imagem ${startIndex + index + 1}: ${img.name} (${
-                  img.file.size
-                } bytes)`
+                `Adicionando imagem ${index + 1} do lote ${batchIndex + 1}: ${img.name} (${img.file.size} bytes)`
               );
             });
 
-            // Adiciona informações do lote
             formData.append("Nome da Propriedade (Apelido)", propertyName);
             formData.append("batchNumber", batchIndex + 1);
             formData.append("totalBatches", totalBatches);
@@ -374,7 +541,6 @@ const ImageUploader = () => {
 
             if (response.ok) {
               successfulUploads += batchImages.length;
-              console.log(`Lote ${batchIndex + 1} enviado com sucesso!`);
               batchSuccess = true;
             } else {
               const errorText = await response.text();
@@ -387,7 +553,7 @@ const ImageUploader = () => {
                 failedUploads += batchImages.length;
                 setMessage({
                   type: "error",
-                  text: `Erro no lote ${batchIndex + 1} após ${
+                  text: `Erro no lote ${batchIndex + 1} apos ${
                     maxRetries + 1
                   } tentativas: ${errorText}`,
                 });
@@ -403,7 +569,7 @@ const ImageUploader = () => {
               failedUploads += batchImages.length;
               setMessage({
                 type: "error",
-                text: `Erro no lote ${batchIndex + 1} após ${
+                text: `Erro no lote ${batchIndex + 1} apos ${
                   maxRetries + 1
                 } tentativas: ${error.message}`,
               });
@@ -413,38 +579,38 @@ const ImageUploader = () => {
           retryCount++;
         }
 
-        // Atualiza o progresso
-        const progressPercent = ((batchIndex + 1) / totalBatches) * 100;
-        setProgress(progressPercent);
+        setProgress(((batchIndex + 1) / totalBatches) * 100);
 
-        // Aguarda 1 minuto antes do próximo lote (só se não for o último)
         if (batchIndex < totalBatches - 1) {
-            // Use Date.now() loop for more robust timing on mobile background
-            const startWait = Date.now();
-            const waitTime = 60000;
+          const startWait = Date.now();
+          const waitTime = 60000;
 
-            while (Date.now() - startWait < waitTime) {
-                const remaining = Math.ceil((waitTime - (Date.now() - startWait)) / 1000);
-                setProgressText(`⏳ Aguardando ${remaining}s para o próximo lote...`);
-                // Update text every second
-                await new Promise(r => setTimeout(r, 1000));
-            }
+          while (Date.now() - startWait < waitTime) {
+            const remaining = Math.ceil(
+              (waitTime - (Date.now() - startWait)) / 1000
+            );
+            setProgressText(`Aguardando ${remaining}s para o proximo lote...`);
+            await wait(1000);
+          }
         }
       }
 
-      // Resultado final
       if (failedUploads === 0) {
         setProgress(100);
         setProgressText(
-          `🎉 Todas as ${selectedImages.length} imagens enviadas com sucesso em ${totalBatches} lote(s)!`
+          `Todas as ${selectedImages.length} imagens foram enviadas com sucesso em ${totalBatches} lote(s).`
         );
         setMessage({
           type: "success",
-          text: `Upload concluído! ${successfulUploads} imagens enviadas com sucesso.`,
+          text: `Upload concluido! ${successfulUploads} imagens enviadas com sucesso.`,
         });
 
-        // Reset form after success
         setTimeout(() => {
+          selectedImagesRef.current.forEach((img) => {
+            if (img.preview) {
+              URL.revokeObjectURL(img.preview);
+            }
+          });
           setSelectedImages([]);
           setPropertyName("");
           setProgress(0);
@@ -453,7 +619,7 @@ const ImageUploader = () => {
         }, 3000);
       } else if (successfulUploads > 0) {
         setProgress(100);
-        setProgressText("⚠️ Upload parcialmente concluído");
+        setProgressText("Upload parcialmente concluido");
         setMessage({
           type: "error",
           text: `Upload parcial: ${successfulUploads} imagens enviadas, ${failedUploads} falharam. Tente novamente com as imagens que falharam.`,
@@ -463,7 +629,7 @@ const ImageUploader = () => {
         setProgressText("");
         setMessage({
           type: "error",
-          text: "❌ Falha no upload de todos os lotes. Verifique sua conexão e tente novamente.",
+          text: "Falha no upload de todos os lotes. Verifique sua conexao e tente novamente.",
         });
       }
     } catch (error) {
@@ -472,22 +638,20 @@ const ImageUploader = () => {
         type: "error",
         text:
           error.message ||
-          "Erro ao enviar imagens. Verifique sua conexão e tente novamente.",
+          "Erro ao enviar imagens. Verifique sua conexao e tente novamente.",
       });
     } finally {
       setIsUploading(false);
-      // Release Wake Lock
       if (wakeLock) {
         try {
-            await wakeLock.release();
-            console.log('Wake Lock released');
+          await wakeLock.release();
+          console.log("Wake Lock released");
         } catch (err) {
-            console.error('Error releasing Wake Lock:', err);
+          console.error("Error releasing Wake Lock:", err);
         }
       }
     }
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
