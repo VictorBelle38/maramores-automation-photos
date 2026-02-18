@@ -41,7 +41,7 @@ export default defineConfig({
       process.env.VITE_MOBILE_JPEG_QUALITY || "0.86"
     ),
     __BATCH_SIZE__: JSON.stringify(process.env.VITE_BATCH_SIZE || "5"),
-    __BATCH_DELAY_MS__: JSON.stringify(process.env.VITE_BATCH_DELAY_MS || "30000"),
+    __BATCH_DELAY_MS__: JSON.stringify(process.env.VITE_BATCH_DELAY_MS || "60000"),
     __MOBILE_BATCH_MAX_MB__: JSON.stringify(
       process.env.VITE_MOBILE_BATCH_MAX_MB || "8"
     ),
@@ -50,3 +50,4 @@ export default defineConfig({
     ),
   },
 });
+
