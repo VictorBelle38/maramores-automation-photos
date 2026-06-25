@@ -76,3 +76,7 @@ jspm_packages/
 
 # DynamoDB Local files
 .dynamodb/
+# Added by pre-format cleanup
+.env
+.env.local
+.env.*.local
